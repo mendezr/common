@@ -1,12 +1,20 @@
 #!/usr/bin/env bats
 # Tests for apps.just recipes: install-opentabletdriver and cncf.
 #
+# install-opentabletdriver carries supply-chain pins (projectbluefin/common#1170):
+# the OTD_TARBALL_* / OTD_SERVICE_* constants below mirror the URL and sha256
+# pins in the recipe and must be updated together with it on every bump.
+#
 # Scope note: the `install-jetbrains-toolbox` and `install-asus` recipes in the
 # same file are not covered here yet. Their `brew tap` / `brew trust` lines are
 # covered by tests/test_brew_tap_trust.bats; recipe-level coverage for them is
 # a follow-up.
 
 APPS_JUST="${BATS_TEST_DIRNAME}/../system_files/shared/usr/share/ublue-os/just/apps.just"
+OTD_TARBALL_URL="https://github.com/OpenTabletDriver/OpenTabletDriver/releases/download/v0.6.7/opentabletdriver-0.6.7_linux-x64_simple.tar.gz"
+OTD_TARBALL_SHA256="ab3ecfed8579864d947b2ad04c236822a109bc7c52519af7aaa36e03e99d2265"
+OTD_SERVICE_URL="https://raw.githubusercontent.com/flathub/net.opentabletdriver.OpenTabletDriver/1a2a2083b8ed831df3b8b6ae3ddfe7dc21d02e01/scripts/opentabletdriver.service"
+OTD_SERVICE_SHA256="ef2f5c450ed1b30cd143285ee119f3cd89fc7b00e1a62ffe471dc4bdd0a1260a"
 WORKDIR=""
 MOCKDIR=""
 COMMAND_LOG=""
@@ -62,26 +70,63 @@ echo "sudo $*" >> "${COMMAND_LOG}"
 exec "$@"
 MOCK
 
-    _write_mock "curl" <<'MOCK'
+    # The otd curl mock honours the flags the recipe passes: -f (fail mode) and
+# -o (write payload to file instead of stdout). Modes set via CURL_OTD_MODE
+# (default 'ok'; 'corrupt' serves a tampered tarball, 'http-error' exits 22).
+_write_mock "curl" <<'MOCK'
 #!/usr/bin/env bash
 echo "curl $*" >> "${COMMAND_LOG}"
+url=""
+outfile=""
+want_outfile=0
 for arg in "$@"; do
+    if [[ "${want_outfile}" == 1 ]]; then
+        outfile="${arg}"
+        want_outfile=0
+        continue
+    fi
     case "${arg}" in
-        *api.github.com/repos/OpenTabletDriver*)
-            cat "${MOCK_RELEASE_JSON}"
-            exit 0
-            ;;
-        *opentabletdriver.service)
-            printf '%s\n' "MOCK-SYSTEMD-UNIT"
-            exit 0
-            ;;
+        -o|--output) want_outfile=1 ;;
+        -*) ;;
+        *) url="${arg}" ;;
     esac
 done
-# asset download leg: emit the prepared tarball on stdout
-if [[ -n "${MOCK_OTD_TARBALL:-}" && -f "${MOCK_OTD_TARBALL}" ]]; then
-    cat "${MOCK_OTD_TARBALL}"
+mode="${CURL_OTD_MODE:-ok}"
+if [[ "${mode}" == "http-error" ]]; then
+    echo "curl: (22) The requested URL returned error: 500" >&2
+    exit 22
 fi
+if [[ -n "${outfile}" ]]; then
+    emit() { cat > "${outfile}"; }
+else
+    emit() { cat; }
+fi
+case "${url}" in
+    *opentabletdriver.service)
+        printf '%s\n' "MOCK-SYSTEMD-UNIT" | emit
+        ;;
+    *OpenTabletDriver*releases/latest*)
+        emit < "${MOCK_RELEASE_JSON}"
+        ;;
+    *)
+        # tarball download leg; 'corrupt' serves a payload that fails the
+        # recipe's sha256 gate
+        if [[ "${mode}" == "corrupt" ]]; then
+            printf 'tampered-payload' | emit
+        elif [[ -n "${MOCK_OTD_TARBALL:-}" && -f "${MOCK_OTD_TARBALL}" ]]; then
+            emit < "${MOCK_OTD_TARBALL}"
+        fi
+        ;;
+esac
 exit 0
+MOCK
+
+    # Log-and-passthrough so checksum-gate ordering is observable while the
+    # real verification (and its tamper behaviour) still runs.
+    _write_mock "sha256sum" <<'MOCK'
+#!/usr/bin/env bash
+echo "sha256sum $*" >> "${COMMAND_LOG}"
+exec /usr/bin/sha256sum "$@"
 MOCK
 
     _write_mock "flatpak" <<'MOCK'
@@ -120,16 +165,19 @@ MOCK
 }
 JSON
 
-    # Fixture: tarball shaped like the real release (one top-level dir that
-    # --strip-components=1 removes), carrying the udev rule the recipe copies.
-    local stage="${WORKDIR}/stage/OpenTabletDriver"
-    mkdir -p "${stage}/etc/udev/rules.d"
-    printf '%s\n' "MOCK-UDEV-RULE" > "${stage}/etc/udev/rules.d/70-opentabletdriver.rules"
+    # Fixture: tarball shaped like the upstream 'simple' release package (one
+    # top-level dir that --strip-components=1 removes, rules file at the
+    # archive root), carrying the udev rule the recipe copies.
+    local stage="${WORKDIR}/stage/opentabletdriver-Simple"
+    mkdir -p "${stage}"
+    printf '%s\n' "MOCK-UDEV-RULE" > "${stage}/70-opentabletdriver.rules"
     MOCK_OTD_TARBALL="${WORKDIR}/otd.tar.gz"
-    tar -czf "${MOCK_OTD_TARBALL}" -C "${WORKDIR}/stage" OpenTabletDriver
+    tar -czf "${MOCK_OTD_TARBALL}" -C "${WORKDIR}/stage" opentabletdriver-Simple
+    # Matches OTD_TARBALL_SHA256 so the recipe's checksum gate passes.
+    MOCK_OTD_TARBALL_SHA256="${OTD_TARBALL_SHA256}"
 
     # Redirect the recipe's absolute system paths into the sandbox. Anchor on a
-    # leading space so the "${OTD_TMPDIR}/etc/..." source path is left alone.
+    # leading space so the "${OTD_TMPDIR}/..." source path is left alone.
     FAKE_ROOT="${WORKDIR}/root"
     mkdir -p "${FAKE_ROOT}/etc/udev/rules.d" "${FAKE_ROOT}/etc/modprobe.d" \
         "${FAKE_ROOT}/usr/share/ublue-os/homebrew"
@@ -137,6 +185,17 @@ JSON
         -e "s| /etc/udev/rules.d| ${FAKE_ROOT}/etc/udev/rules.d|g" \
         -e "s| /etc/modprobe.d| ${FAKE_ROOT}/etc/modprobe.d|g" \
         "${OTD_SCRIPT}"
+    # The sha256 gate in the recipe uses the real release pin; substitute the
+    # fixture tarball's own sha256 so the sandboxed install run passes its
+    # checksum gate (the tampered-payload test asserts the gate still fires).
+    local fixture_hash
+    fixture_hash="$(sha256sum "${MOCK_OTD_TARBALL}" | awk '{print $1}')"
+    sed -i "s|${OTD_TARBALL_SHA256}|${fixture_hash}|" "${OTD_SCRIPT}"
+    # Same for the systemd-unit gate: the mock serves a fixture unit, so swap
+    # in the hash of the exact bytes the mock writes.
+    local fixture_service_hash
+    fixture_service_hash="$(printf '%s\n' "MOCK-SYSTEMD-UNIT" | sha256sum | awk '{print $1}')"
+    sed -i "s|${OTD_SERVICE_SHA256}|${fixture_service_hash}|" "${OTD_SCRIPT}"
     sed -i \
         -e "s|/usr/share/ublue-os/homebrew|${FAKE_ROOT}/usr/share/ublue-os/homebrew|g" \
         "${CNCF_SCRIPT}"
@@ -160,6 +219,8 @@ _run_otd() {
         MOCK_GUM_CONFIRM_EXIT="${MOCK_GUM_CONFIRM_EXIT:-0}" \
         MOCK_RELEASE_JSON="${MOCK_RELEASE_JSON}" \
         MOCK_OTD_TARBALL="${MOCK_OTD_TARBALL}" \
+        MOCK_OTD_TARBALL_SHA256="${MOCK_OTD_TARBALL_SHA256}" \
+        CURL_OTD_MODE="${CURL_OTD_MODE:-ok}" \
         bash "${OTD_SCRIPT}"
 }
 
@@ -193,12 +254,37 @@ _run_cncf() {
     [[ "$output" != *"Uninstalling OpenTabletDriver..."* ]]
 }
 
-@test "install-opentabletdriver: install selects the tar.gz asset, not the deb or rpm" {
+@test "install-opentabletdriver: install fetches the pinned release tarball URL" {
     MOCK_GUM_CONFIRM_EXIT=0 _run_otd
     [ "$status" -eq 0 ]
-    grep -q "otd.tar.gz" "${COMMAND_LOG}"
-    ! grep -q "otd.deb" "${COMMAND_LOG}"
-    ! grep -q "otd.rpm" "${COMMAND_LOG}"
+    # $* in the mock collapses the recipe's quoting; the URL appears unquoted
+    grep -qF "curl -fsSL ${OTD_TARBALL_URL}" "${COMMAND_LOG}"
+}
+
+@test "install-opentabletdriver: install verifies the tarball sha256 before extraction" {
+    MOCK_GUM_CONFIRM_EXIT=0 _run_otd
+    [ "$status" -eq 0 ]
+    local log_line
+    log_line="$(grep -F "sha256sum -c" "${COMMAND_LOG}" | head -1)"
+    [ -n "${log_line}" ]
+}
+
+@test "install-opentabletdriver: install rejects a tampered tarball (sha256 mismatch)" {
+    CURL_OTD_MODE=corrupt MOCK_GUM_CONFIRM_EXIT=0 _run_otd
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"WARNING: 1 computed checksum did NOT match"* ]]
+    # Nothing may be installed after the failed verification.
+    ! grep -q "sudo cp" "${COMMAND_LOG}"
+    ! grep -q "flatpak --system install" "${COMMAND_LOG}"
+    [ ! -f "${FAKE_ROOT}/etc/udev/rules.d/71-opentabletdriver.rules" ]
+    [ ! -f "${HOMEDIR}/.config/systemd/user/opentabletdriver.service" ]
+}
+
+@test "install-opentabletdriver: install fetches the systemd unit from a pinned commit, not a moving branch" {
+    MOCK_GUM_CONFIRM_EXIT=0 _run_otd
+    [ "$status" -eq 0 ]
+    grep -qF "curl -fsSL ${OTD_SERVICE_URL}" "${COMMAND_LOG}"
+    ! grep -qE "refs/heads/|/master/" "${COMMAND_LOG}"
 }
 
 @test "install-opentabletdriver: install renames the udev rule 70- -> 71-" {
@@ -207,6 +293,21 @@ _run_cncf() {
     [ -f "${FAKE_ROOT}/etc/udev/rules.d/71-opentabletdriver.rules" ]
     [ ! -f "${FAKE_ROOT}/etc/udev/rules.d/70-opentabletdriver.rules" ]
     grep -q "MOCK-UDEV-RULE" "${FAKE_ROOT}/etc/udev/rules.d/71-opentabletdriver.rules"
+}
+
+@test "install-opentabletdriver: install writes the systemd unit only after its sha256 verifies" {
+    MOCK_GUM_CONFIRM_EXIT=0 _run_otd
+    [ "$status" -eq 0 ]
+    [ -f "${HOMEDIR}/.config/systemd/user/opentabletdriver.service" ]
+    grep -q "MOCK-SYSTEMD-UNIT" "${HOMEDIR}/.config/systemd/user/opentabletdriver.service"
+    # The unit sha256 gate runs against the downloaded file before enable.
+    grep -q "sha256sum -c" "${COMMAND_LOG}"
+    local last_check
+    last_check="$(grep -n "sha256sum -c" "${COMMAND_LOG}" | tail -1 | cut -d: -f1)"
+    local enable_line
+    enable_line="$(grep -n "systemctl enable --user --now" "${COMMAND_LOG}" | head -1 | cut -d: -f1)"
+    [ -n "${enable_line}" ]
+    [ "${last_check}" -lt "${enable_line}" ]
 }
 
 @test "install-opentabletdriver: install blacklists hid_uclogic and wacom" {
@@ -234,13 +335,19 @@ _run_cncf() {
     grep -q "flatpak --system install -y flathub net.opentabletdriver.OpenTabletDriver" "${COMMAND_LOG}"
 }
 
-@test "install-opentabletdriver: install writes the user service unit and enables it" {
+@test "install-opentabletdriver: install enables the user service unit" {
     MOCK_GUM_CONFIRM_EXIT=0 _run_otd
     [ "$status" -eq 0 ]
-    [ -f "${HOMEDIR}/.config/systemd/user/opentabletdriver.service" ]
-    grep -q "MOCK-SYSTEMD-UNIT" "${HOMEDIR}/.config/systemd/user/opentabletdriver.service"
     grep -q "systemctl --user daemon-reload" "${COMMAND_LOG}"
     grep -q "systemctl enable --user --now opentabletdriver.service" "${COMMAND_LOG}"
+}
+
+@test "install-opentabletdriver: install fails closed when curl errors (no -f would hide it)" {
+    CURL_OTD_MODE=http-error MOCK_GUM_CONFIRM_EXIT=0 _run_otd
+    [ "$status" -ne 0 ]
+    ! grep -q "sudo cp" "${COMMAND_LOG}"
+    ! grep -q "flatpak --system install" "${COMMAND_LOG}"
+    [ ! -f "${HOMEDIR}/.config/systemd/user/opentabletdriver.service" ]
 }
 
 # --- install-opentabletdriver: uninstall branch --------------------------

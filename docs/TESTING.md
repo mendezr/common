@@ -100,6 +100,9 @@ Do not add exemptions for scripts with branching logic.
 | `tests/test_brew_preinstall.bats` | Managed Brewfile lifecycle plus user-unit ordering, resource priority, and preset delivery |
 | `tests/test_validate_brewfiles.bats` | Brewfile metadata validation, tap setup failures, ambiguity diagnostics, safe argument passing, and qualified wallpaper/Zed references |
 | `tests/test_brew_tap_trust.bats` | `apps.just`, `system.just`, `bazaar-hook` — `brew tap` + `brew trust` are separate commands; `brew tap --trust` is invalid (#814) |
+| `tests/test_apps_just.bats` | `apps.just` — `install-opentabletdriver` pinned-download + sha256 gates (tampered payload, HTTP error, unit-before-enable ordering), install/uninstall branches, and `cncf` |
+| `tests/test_image_repo.bats` | `usr/libexec/ublue-image-repo` — image-name/tag routing to upstream GitHub repos |
+| `tests/test_shared_just.bats` | `shared.just` — `powerwash` (double confirmation) and `toggle-tpm2` recipes |
 
 ## Quality Epic
 
