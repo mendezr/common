@@ -131,12 +131,14 @@ SC2207 (arrays from command output) is suppressed globally in the shellcheck ste
 
 ## Renovate versioned-binary tracking
 
-`.github/renovate.json5` tracks versioned binaries downloaded in the build stage via custom regex managers:
+`.github/renovate.json5` tracks pinned versions of tools fetched at ujust runtime via custom regex managers:
 
 | Binary | Source | Renovate pattern |
 |---|---|---|
 | `bonedigger` | `projectbluefin/bonedigger` GitHub releases | `BONEDIGGER_VERSION` in `system_files/bluefin/usr/share/ublue-os/just/60-bonedigger.just` |
 | `opentabletdriver` | `OpenTabletDriver/OpenTabletDriver` GitHub releases | `OTD_RELEASE="v…"` in `system_files/shared/usr/share/ublue-os/just/apps.just` |
+
+Neither pin is a build-stage download: `BONEDIGGER_VERSION` is a Justfile variable exported to `/usr/libexec/bonedigger-report` when `ujust report` runs, and the OpenTabletDriver tarball is fetched by `ujust install-opentabletdriver` at runtime (see the sha256-verification section below). The only build-stage pins Renovate tracks are the OCI image digests in `Containerfile` — see [Renovate OCI digest tracking](#renovate-oci-digest-tracking).
 
 When adding a new binary pinned to a specific version in a script or just file, add a corresponding regex manager entry in `renovate.json5` so the version stays current automatically.
 
