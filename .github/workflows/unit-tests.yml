@@ -42,7 +42,7 @@ jobs:
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           echo "$(/home/linuxbrew/.linuxbrew/bin/brew --prefix)/bin" >> "$GITHUB_PATH"
           brew install bats-core fish zsh
-          pip install pytest pytest-cov pyyaml jsonschema
+          pip install pytest pytest-cov pyyaml jsonschema numpy
 
       - name: Install just
         uses: taiki-e/install-action@b6a061addd82b81aaeca51bdf2c53cd707996e5a # just
