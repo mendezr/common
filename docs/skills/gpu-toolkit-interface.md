@@ -1,7 +1,7 @@
 ---
 name: gpu-toolkit-interface
-version: "0.1"
-last_updated: "2026-08-08"
+version: "0.2"
+last_updated: "2026-09-26"
 id: gpu-toolkit-interface
 one_line_purpose: Define the shared GPU vendor toolkit interface that all GPU support implementations must satisfy.
 entry_point: docs/skills/gpu-toolkit-interface.md
@@ -102,10 +102,9 @@ reference implementations for this capability.
 | Non-blocking update | The service runs non-interactively and includes a generous timeout |
 | Idempotent | Safe to run on every boot even when the extension is already at the correct version |
 
-**NVIDIA implementation**:
-- `ublue-nvidia-flatpak-runtime-sync` script
-- Installs `org.freedesktop.Platform.GL.nvidia-<version>` and runs `flatpak update --system --noninteractive`
-- `TimeoutStartSec=900` in the service unit
+**NVIDIA implementation**: none in projectbluefin today. The former
+`ublue-nvidia-flatpak-runtime-sync` overlay in `common` shipped to no image and
+was removed (common#1124).
 
 **AMD gap**: AMD GPU Flatpak GL extension (`org.freedesktop.Platform.GL.default` or Mesa-based) is typically handled by the base Mesa stack, but the service pattern must be evaluated for AMD DX12/VK extension variants.
 
@@ -117,7 +116,7 @@ reference implementations for this capability.
 | `check` exit contract | Exit 0 = action needed; exit non-zero = already done |
 | Idempotent `sync` | Safe to run more than once |
 
-**NVIDIA implementation**: `ublue-nvidia-flatpak-runtime-sync.service` invokes `ublue-nvidia-flatpak-runtime-sync check` via `ExecCondition=` and `ublue-nvidia-flatpak-runtime-sync sync` via `ExecStart=`. See `docs/skills/oem-hardware-hooks/SKILL.md` for hook patterns.
+**NVIDIA implementation**: none in projectbluefin today (see section 4). See `docs/skills/oem-hardware-hooks/SKILL.md` for hook patterns.
 
 **AMD implementation target**: AMD-specific first-boot hook if any GPU-version-matched runtime sync is needed.
 

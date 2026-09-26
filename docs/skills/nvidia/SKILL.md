@@ -1,7 +1,7 @@
 ---
 name: nvidia
-version: "1.3"
-last_updated: "2026-09-23"
+version: "1.4"
+last_updated: "2026-09-26"
 id: nvidia
 one_line_purpose: Maintain NVIDIA GPU support architecture and update procedures.
 entry_point: docs/skills/nvidia/SKILL.md
@@ -101,7 +101,6 @@ Do **not** install `nvidia-container-runtime`, `libnvidia-container1`, `libnvidi
 - Removing the `80-nvidia-container-toolkit.preset` CDI preset
 - Removing the `golang-github-nvidia-container-toolkit` exclusion from the bluefin build script
 - Installing `nvidia-container-runtime` or the full `nvidia-container-toolkit` package
-- `TimeoutStartSec` in `ublue-nvidia-flatpak-runtime-sync.service` drops below 900
 
 ---
 
@@ -113,7 +112,6 @@ Before closing any nvidia-related PR:
 - [ ] No `ublue-os/*` repos were written to
 - [ ] CDI preset not accidentally removed — `80-nvidia-container-toolkit.preset` still enables `nvidia-cdi-refresh.{path,service}`
 - [ ] `golang-github-nvidia-container-toolkit` exclusion in bluefin build script is still present
-- [ ] `TimeoutStartSec` in `ublue-nvidia-flatpak-runtime-sync.service` is >= 900
 - [ ] `just check` and `pre-commit run --all-files` pass clean
 
 ---
