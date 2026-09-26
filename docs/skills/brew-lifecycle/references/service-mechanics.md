@@ -202,6 +202,14 @@ Homebrew environment that a GDM-launched session PATH lacks, and `/var/home` is
 the real path (`/home` is a symlink on bootc systems). The per-user copies the
 cask still writes for the first user are harmless duplicates of the same entry.
 
+The Livery, Updates, and First-run settings also require the three
+`io.projectbluefin.chairlift.{livery,updates,firstrun}.gschema.xml` files under
+`/usr/share/glib-2.0/schemas/`. The common `Containerfile` extracts only these
+schemas from the checksummed ChairLift release archive pinned to the cask; the
+composed image runs `glib-compile-schemas` after overlaying shared files so
+GSettings can load them. When the cask release changes, update both
+`CHAIRLIFT_SCHEMA_REF` and the archive checksum together.
+
 ---
 
 ## Confirming the service is working — bonedigger-report
