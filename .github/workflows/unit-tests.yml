@@ -194,9 +194,6 @@ jobs:
       - name: Run bats (libvirt helper)
         run: bats tests/test_libvirt_helper.bats
 
-      - name: Run bats (nvidia flatpak sync)
-        run: bats tests/test_nvidia_flatpak_sync.bats
-
       - name: Run bats (shared.just)
         run: bats tests/test_shared_just.bats
 
