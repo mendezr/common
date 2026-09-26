@@ -5,8 +5,8 @@ ChairLift (https://github.com/projectbluefin/chairlift) reads
 the Bluefin decisions: frostyard/chairlift#54 resolved via the
 system-integration split (frostyard/chairlift#102), so bootc staging is
 now backed by an image-side polkit policy and stage script and
-bootc_updates_group is enabled. ChairLift's generic features group stays
-hidden on Bluefin. Bundle paths point at Bluefin's
+bootc_updates_group is enabled. updex (features_group) stays disabled
+because no updex helper ships on Bluefin. Bundle paths point at Bluefin's
 Brewfiles, and help links point at Bluefin resources.
 
 Note on strictness: ChairLift does not ignore unknown configuration keys.
@@ -158,8 +158,11 @@ def test_bootc_staging_enabled_now_that_polkit_glue_ships():
     assert data["updates_page"]["bootc_updates_group"]["enabled"] is True
 
 
-def test_features_group_stays_hidden():
-    """Bluefin keeps ChairLift's generic feature controls hidden."""
+def test_updex_features_group_stays_disabled():
+    """Upstream's features_group is the updex-managed feature set (it
+    requires the `updex` command), and no updex helper ships on Bluefin —
+    independent of the bootc polkit fix. Keep it off until updex actually
+    ships on Bluefin."""
     data = _load_config()
     assert data["features_page"]["features_group"]["enabled"] is False
 

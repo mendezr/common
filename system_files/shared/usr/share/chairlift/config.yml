@@ -24,11 +24,14 @@ updates_page:
     enabled: true
   # Update policy on Bluefin belongs to uupd (silent background staging,
   # 6-hour timer + AC connect; user reboots on their own schedule).
-  # ChairLift has no update-scheduling group to disable here: upstream's
-  # updates_page schema is a fixed set of groups (as of v0.12.2, the four
-  # above plus update_all_group and sysupdate_updates_group, which we leave
-  # unlisted so they keep upstream's defaults). Its bootc group is a manual
-  # "stage now" action only, so nothing competes with uupd.
+  # Upstream's updates_page schema is a fixed set of groups: as of the
+  # pinned v26.09.0-alpha.2 release, the five above plus
+  # automatic_updates_group and channel_group, which we leave unlisted so
+  # they keep upstream's defaults. automatic_updates_group is only an
+  # on/off switch for the host's own unattended-update timer (uupd here)
+  # and hides itself where no such timer exists; it is not a competing
+  # scheduler. ChairLift's bootc group is a manual "stage now" action
+  # only, so nothing competes with uupd.
   # Do NOT invent a group to express this policy — an unknown group key
   # fails ChairLift's strict schema validation and disables the entire
   # app (see docs/skills/brew-lifecycle.md).
@@ -59,7 +62,11 @@ maintenance_page:
     enabled: false
 
 features_page:
-  # Keep the generic ChairLift feature controls hidden on Bluefin.
+  # Upstream defines features_group as the system features managed by updex
+  # (requires the `updex` command), and updex is not present on Bluefin.
+  # Unlike bootc staging, no updex helper ships on the image, so this stays
+  # off regardless of the polkit fix in frostyard/chairlift#54 — flip only
+  # if/when updex ever ships on Bluefin.
   features_group:
     enabled: false
 
